@@ -34,6 +34,38 @@ Lake 0.3.0 (the release with the cost cap, the trial and the `license` command) 
 
 Requirements: Node 18.17+, git, a GitHub repo. Full docs: the package README on [npm](https://www.npmjs.com/package/lake-gate).
 
+## Action usage
+
+The PR check is a GitHub Action in this repo: `getlake/lake@v0`. `npx lake-gate init` writes the workflow for you; to add it by hand, save this as `.github/workflows/lake-gate.yml`:
+
+```yaml
+name: Lake plan gate
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  issue_comment:
+    types: [created, edited, deleted]
+  push:
+    paths: ['.lake/config.json']
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  statuses: write
+jobs:
+  plan-gate:
+    if: github.event_name != 'issue_comment' || (github.event.issue.pull_request && contains(github.event.comment.body, '/lake'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: getlake/lake@v0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+It sets the `lake/plan-approval` status: success once every plan in `.lake/plans/` that the PR touches is approved, for its current version, by someone other than the PR author (`/lake approve <id>@<version>` or GitHub's Approve). Make that status required in branch protection to block merges. The Action only reads the PR and its approvals with the workflow's token; it needs no license key and makes no other network calls. `v0` tracks the latest 0.x release; pin `v0.3.0` for a fixed version.
+
 ## Pricing
 
 | Plan | Price | Includes |

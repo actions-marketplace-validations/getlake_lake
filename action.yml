@@ -1,0 +1,21 @@
+name: Lake plan gate
+description: "Lake plan review: sets lake/plan-approval once every plan in the PR is approved, for its current version, by a teammate."
+author: Lake
+branding:
+  icon: check-circle
+  color: green
+inputs:
+  token:
+    description: GitHub token with statuses:write and pull-requests:write (the default GITHUB_TOKEN works).
+    required: false
+    default: ${{ github.token }}
+  comment:
+    description: Post and update one summary comment on the PR.
+    required: false
+    default: 'true'
+outputs:
+  state:
+    description: success or failure
+runs:
+  using: node24
+  main: dist/index.mjs
