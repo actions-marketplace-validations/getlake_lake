@@ -17,7 +17,7 @@ This is Lake's public home for docs, releases and support. The source code isn't
 3. **A teammate reviews it.** In the Lake review app, with GitHub's own Approve button, or from your agent chat (MCP). Edit one word of the plan and the approval no longer applies.
 4. **The agent builds, within a cap.** Edits wait for the approval, and a PR check keeps unapproved plans from merging. During the run, a per-run cost cap stops and asks before spending more.
 
-Lake runs in your repo and on GitHub. There's no Lake server, no account and no telemetry. Plans stay in your repo.
+Lake runs in your repo and on GitHub. Plans stay in your repo. The CLI, hooks, license check and Action make no network calls home and send no telemetry. The hosted review app counts anonymous, cookieless pageviews (GoatCounter).
 
 ## Install
 
