@@ -1,8 +1,8 @@
 # Lake
 
-**Shift review left: review your coding agent's plan, before any code is written.**
+**Shift review left: review your coding agent's plan, before the code.**
 
-Code review catches a wrong approach after the agent has spent the tokens and you've spent the hours. Lake moves the review to the plan. Your agent writes a plan, Lake puts a cost estimate on every step, and a teammate reviews it before implementation starts. You save money and time, and you make sure the agent is solving the right problem with the right implementation plan.
+Code review catches a wrong approach after the agent has spent the tokens and you've spent the hours. Lake moves the review to the plan. Your agent writes a plan, Lake puts a cost estimate on every step, and a teammate approves it. The PR can't merge until that exact plan version is approved. You save money and time, and you make sure the agent is solving the right problem with the right implementation plan.
 
 Merge blocking is how Lake enforces that, not the point: the PR can't merge until the current version of the plan is approved.
 
@@ -13,7 +13,7 @@ This is Lake's public home for docs, releases and support. The source code isn't
 ## How it works
 
 1. **The agent writes a plan.** When Claude Code leaves plan mode, the plan is saved to `.lake/plans/` in your repo as a versioned file. Cursor and other agents use the CLI.
-2. **Lake puts a cost on every step.** A complexity rating, a recommended model and a $ range per step, so the review covers what the plan will cost too. Reviewers can swap in a cheaper model, drop a step or set a cap in one click.
+2. **Lake puts an estimated cost on every step.** A complexity rating, a recommended model and a $ range per step, so the review covers what the plan will cost too. Reviewers can swap in a cheaper model, drop a step or set a cap in one click.
 3. **A teammate reviews it.** In the Lake review app, with GitHub's own Approve button, or from your agent chat (MCP). Edit one word of the plan and the approval no longer applies.
 4. **The agent builds, within a cap.** Edits wait for the approval, and a PR check keeps unapproved plans from merging. During the run, a per-run cost cap stops and asks before spending more.
 
@@ -70,7 +70,7 @@ It sets the `lake/plan-approval` status: success once every plan in `.lake/plans
 
 | Plan | Price | Includes |
 |---|---|---|
-| **Solo** | $12/month | Plan review for your own runs, a model and a cost for every step, the run cap, review app and MCP |
+| **Solo** | $12/month | Plan review for your own runs, a model and an estimated cost for every step, the run cap, review app and MCP |
 | **Team** | $15 per user/month | Everything in Solo, teammate approval of the exact plan version, the PR merge check, budget approval above a limit |
 
 Both start with a **14-day free trial**. Paid checkout isn't open yet, so nothing is charged until you choose to subscribe.
