@@ -30,6 +30,8 @@ npx lake-gate ui                 # the review app on localhost
 
 Working alone? `npx lake-gate init --try --cap 10` sets up solo mode, where you approve your own plans locally.
 
+Lake 0.3.0 (the release with the cost cap, the trial and the `license` command) is rolling out on npm now. Check with `npm view lake-gate version`.
+
 Requirements: Node 18.17+, git, a GitHub repo. Full docs: the package README on [npm](https://www.npmjs.com/package/lake-gate).
 
 ## Pricing
