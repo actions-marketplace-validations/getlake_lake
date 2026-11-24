@@ -23,14 +23,15 @@ Lake runs in your repo and on GitHub. Plans stay in your repo. The CLI, hooks, l
 
 ```bash
 cd your-repo
-npx lake-gate init --cap 10      # plan review + a $10 per-run cost cap
+npm i -D lake-gate
+npx lake-gate init --cap 5       # plan review + a $5 per-run cost cap
 git add .lake .claude .github .mcp.json .cursor && git commit -m "Add Lake" && git push
 npx lake-gate ui                 # the review app on localhost
 ```
 
-Working alone? `npx lake-gate init --try --cap 10` sets up solo mode, where you approve your own plans locally.
+Working alone? `npm i -D lake-gate && npx lake-gate init --try --cap 10` sets up solo mode, where you approve your own plans locally.
 
-Lake 0.3.0 (the release with the cost cap, the trial and the `license` command) is rolling out on npm now. Check with `npm view lake-gate version`.
+The current release is lake-gate 0.3.0 on npm (`npx lake-gate --version`). Your 14-day trial starts on the first `init`.
 
 Requirements: Node 18.17+, git, a GitHub repo. Full docs: the package README on [npm](https://www.npmjs.com/package/lake-gate).
 
@@ -73,7 +74,7 @@ It sets the `lake/plan-approval` status: success once every plan in `.lake/plans
 | **Solo** | $12/month | Plan review for your own runs, a model and an estimated cost for every step, the run cap, review app and MCP |
 | **Team** | $15 per user/month | Everything in Solo, teammate approval of the exact plan version, the PR merge check, budget approval above a limit |
 
-Both start with a **14-day free trial**. Paid checkout isn't open yet, so nothing is charged until you choose to subscribe.
+Both start with a **14-day free trial**, available now: install and run `init`, no card needed. Paid checkout opens soon; until then nothing is charged.
 
 - **Founding offer:** the first 50 users get 2 months free, then 50% off for life.
 - **Design partners:** 5 teams get 3 months free, then 50% off for life, in exchange for a feedback call and real use.
