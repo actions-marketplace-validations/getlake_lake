@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Lake GitHub Action 0.3.0 (lake/plan-approval). Built from lake-gate 0.3.0. Copyright (c) 2026 Lake. All rights reserved. See LICENSE.
+// Lake GitHub Action 0.3.1 (lake/plan-approval). Built from lake-gate 0.3.1. Copyright (c) 2026 Lake. All rights reserved. See LICENSE.
 
 // src/action.js
 import fs from "node:fs";
@@ -900,6 +900,11 @@ ${x.body || ""}` }));
   const exposure = d.cap != null ? Math.min(d.cap, plannedUsd[1]) : plannedUsd[1];
   return { ...est, steps, model: planModel ? { key: planModel.key, name: planModel.name } : null, declared, plannedUsd, cap: d.cap, exposure, modelNotes: notes };
 }
+function withRunCap(est, plan) {
+  const c = Number(plan?.meta?.runCap);
+  if (c > 0) est.runCap = c;
+  return est;
+}
 function costSuggestions(est, config) {
   const b = config.budget || {};
   const out = [];
@@ -924,7 +929,8 @@ function costSuggestions(est, config) {
   if (est.cap == null && est.plannedUsd[1] > capAbove) {
     const mid = (est.plannedUsd[0] + est.plannedUsd[1]) / 2;
     const cap = Math.max(1, Math.ceil(mid * 1.15));
-    if (cap < est.plannedUsd[1]) out.push({ id: `cap-${cap}`, kind: "cap", title: `Cap the run at $${cap}`, detail: "The agent stops and asks before spending more. Budget approval looks at the cap.", saving: [0, est.plannedUsd[1] - cap], patch: { type: "cap", usd: cap } });
+    const ceiling = est.runCap > 0 ? Math.min(est.plannedUsd[1], est.runCap) : est.plannedUsd[1];
+    if (cap < ceiling) out.push({ id: `cap-${cap}`, kind: "cap", title: est.runCap > 0 ? `Cap the run at $${cap} (the author's run cap is $${est.runCap})` : `Cap the run at $${cap}`, detail: "The agent stops and asks before spending more. Budget approval looks at the cap.", saving: [0, ceiling - cap], patch: { type: "cap", usd: cap } });
   }
   const min = b.suggestAbove ?? 0;
   return est.plannedUsd[1] >= min ? out.filter((s) => s.saving[1] > 5e-3) : [];
@@ -972,7 +978,7 @@ function estimatePlan(body, config) {
     pricesAsOf: a.pricesVerifiedAt
   }, body, config);
 }
-var money = (n) => n < 0.01 ? "<$0.01" : n < 0.1 ? `$${n.toFixed(3)}` : n < 10 ? `$${n.toFixed(2)}` : `$${Math.round(n).toLocaleString("en-US")}`;
+var money = (n) => n < 0.01 ? "<$0.01" : n < 10 ? `$${n.toFixed(2)}` : n < 100 ? `$${n.toFixed(1)}` : `$${Math.round(n).toLocaleString("en-US")}`;
 var range = ([a, b]) => b < 0.01 ? "<$0.01" : `${money(a)}\u2013${money(b)}`;
 var mixedModels = (est) => !!est.declared && est.steps.some((s) => s.planned && s.planned.name !== est.model?.name);
 var modelLabel = (est) => mixedModels(est) ? est.model ? ` \xB7 planned per step (default ${est.model.name})` : " \xB7 planned per step" : est.model ? ` on ${est.model.name}` : "";
@@ -1315,7 +1321,7 @@ async function evaluatePr(gh, number) {
     const text = await gh.file(p, pr.head.sha);
     if (text == null) continue;
     const plan = readPlanText(text, p.split("/").pop().slice(0, -3));
-    const estimate = estimatePlan(plan.body, config);
+    const estimate = withRunCap(estimatePlan(plan.body, config), plan);
     const digestAt = await nativeDigests(gh, events, p, { headSha: pr.head.sha, headText: text, config });
     const planEvents = expandEvents(events.map((e) => ({ ...e, id: `${e.source}${e.id}` })), { planId: plan.id, digestAt, config });
     const autoContext = { codeLines, gatedBefore: await gatedBefore(gh, p, pr, prCommits, config, plan.digest) };

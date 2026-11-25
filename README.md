@@ -23,14 +23,21 @@ Lake runs in your repo and on GitHub. Plans stay in your repo. The CLI, hooks, l
 
 ```bash
 cd your-repo
-npx lake-gate init --cap 10      # plan review + a $10 per-run cost cap
-git add .lake .claude .github .mcp.json .cursor && git commit -m "Add Lake" && git push
+npm i -D lake-gate
+npx lake-gate init --cap 5       # plan review + a $5 per-run cost cap
+git add .gitignore .lake .claude/settings.json .github .mcp.json .cursor/mcp.json && git commit -m "Add Lake" && git push
 npx lake-gate ui                 # the review app on localhost
 ```
 
-Working alone? `npx lake-gate init --try --cap 10` sets up solo mode, where you approve your own plans locally.
+Working alone? `npm i -D lake-gate && npx lake-gate init --try --cap 10` sets up solo mode, where you approve your own plans locally. Bringing in your team later: `npx lake-gate init --team`.
 
-Lake 0.3.0 (the release with the cost cap, the trial and the `license` command) is rolling out on npm now. Check with `npm view lake-gate version`.
+The current release is lake-gate 0.3.1 on npm (`npx lake-gate --version`). Your 14-day trial starts on the first `init`.
+
+`init` keeps the cost cap's per-machine files (`.claude/settings.local.json`, its backup and `.claude/skills/meter/`) out of git with `.gitignore`: they point at paths on your machine. Each teammate runs `npx lake-gate init --cap <usd>` for their own cap.
+
+**Blocking merges.** Require the `lake/plan-approval` status in branch protection (Settings → Branches → Require status checks). Don't require the workflow job (`Lake plan gate / runner …`, or `plan-gate` in older workflows): it only runs the check and passes even while a plan waits. Required checks need a public repo, or GitHub Pro/Team for private repos. Without them the check is advisory: it shows red, but GitHub still lets the PR merge.
+
+**PRs opened by an agent or bot** with the workflow's `GITHUB_TOKEN` don't start other workflows, so `lake/plan-approval` appears only after a human acts on the PR: a `/lake` comment, a review, or one pushed commit. Or open agent PRs with a personal or GitHub App token.
 
 Requirements: Node 18.17+, git, a GitHub repo. Full docs: the package README on [npm](https://www.npmjs.com/package/lake-gate).
 
@@ -56,6 +63,7 @@ permissions:
   statuses: write
 jobs:
   plan-gate:
+    name: runner (require lake/plan-approval, not this)
     if: github.event_name != 'issue_comment' || (github.event.issue.pull_request && contains(github.event.comment.body, '/lake'))
     runs-on: ubuntu-latest
     steps:
@@ -64,7 +72,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-It sets the `lake/plan-approval` status: success once every plan in `.lake/plans/` that the PR touches is approved, for its current version, by someone other than the PR author (`/lake approve <id>@<version>` or GitHub's Approve). Make that status required in branch protection to block merges. The Action only reads the PR and its approvals with the workflow's token; it needs no license key and makes no other network calls. `v0` tracks the latest 0.x release; pin `v0.3.0` for a fixed version.
+It sets the `lake/plan-approval` status: success once every plan in `.lake/plans/` that the PR touches is approved, for its current version, by someone other than the PR author (`/lake approve <id>@<version>` or GitHub's Approve). Make that status (not the workflow job) required in branch protection to block merges; that needs a public repo, or GitHub Pro/Team for a private one. The Action only reads the PR and its approvals with the workflow's token; it needs no license key and makes no other network calls. `v0` tracks the latest 0.x release; pin `v0.3.1` for a fixed version.
 
 ## Pricing
 
@@ -73,7 +81,7 @@ It sets the `lake/plan-approval` status: success once every plan in `.lake/plans
 | **Solo** | $12/month | Plan review for your own runs, a model and an estimated cost for every step, the run cap, review app and MCP |
 | **Team** | $15 per user/month | Everything in Solo, teammate approval of the exact plan version, the PR merge check, budget approval above a limit |
 
-Both start with a **14-day free trial**. Paid checkout isn't open yet, so nothing is charged until you choose to subscribe.
+Both start with a **14-day free trial**, available now: install and run `init`, no card needed. Paid checkout opens soon; until then nothing is charged.
 
 - **Founding offer:** the first 50 users get 2 months free, then 50% off for life.
 - **Design partners:** 5 teams get 3 months free, then 50% off for life, in exchange for a feedback call and real use.
