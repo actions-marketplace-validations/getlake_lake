@@ -1,5 +1,5 @@
-name: Lake plan gate
-description: "Lake plan review: sets lake/plan-approval once every plan in the PR is approved, for its current version, by a teammate."
+name: Lake
+description: "Plan approval for teams running AI coding agents. Sets the lake/plan-approval check when every plan in the PR is approved, for its current version, by a teammate."
 author: Lake
 branding:
   icon: check-circle
