@@ -1,10 +1,10 @@
 # Lake
 
-**Shift review left: review your coding agent's plan, before the code.**
+**The platform for teams running many AI coding agents.**
 
-Code review catches a wrong approach after the agent has spent the tokens and you've spent the hours. Lake moves the review to the plan. Your agent writes a plan, Lake puts a cost estimate on every step, and a teammate approves it. The PR can't merge until that exact plan version is approved. You save money and time, and you make sure the agent is solving the right problem with the right implementation plan.
+Lake is one product, for heads of engineering and the leads who run the team. **Gate** is plan approval: plans live in the PR, a teammate or a manager reviews in rounds, and the PR can't merge until that exact plan version is approved. **Meter** is cost control: a model and an estimated cost for every step, a run cap that stops and asks, and budget-owner approval above a limit you set. They are capabilities of Lake, not separate products.
 
-Merge blocking is how Lake enforces that, not the point: the PR can't merge until the current version of the plan is approved.
+Merge blocking is how Gate enforces approval, not the point: the PR can't merge until the current version of the plan is approved.
 
 Website: **[getlake.dev](https://getlake.dev/)** · Pricing: **[getlake.dev/#pricing](https://getlake.dev/#pricing)** · Live demo: **[review app with a sample team](https://getlake.dev/lake-gate/app/#/demo)**
 
@@ -31,7 +31,7 @@ npx lake-gate ui                 # the review app on localhost
 
 Working alone? `npm i -D lake-gate && npx lake-gate init --try --cap 10` sets up solo mode, where you approve your own plans locally. Bringing in your team later: `npx lake-gate init --team`.
 
-The current release is lake-gate 0.3.1 on npm (`npx lake-gate --version`). Your 14-day trial starts on the first `init`.
+The current release is 0.3.2 on npm (`npx lake-gate --version`). Your 14-day trial starts on the first `init`.
 
 `init` keeps the cost cap's per-machine files (`.claude/settings.local.json`, its backup and `.claude/skills/meter/`) out of git with `.gitignore`: they point at paths on your machine. Each teammate runs `npx lake-gate init --cap <usd>` for their own cap.
 
@@ -72,7 +72,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-It sets the `lake/plan-approval` status: success once every plan in `.lake/plans/` that the PR touches is approved, for its current version, by someone other than the PR author (`/lake approve <id>@<version>` or GitHub's Approve). Make that status (not the workflow job) required in branch protection to block merges; that needs a public repo, or GitHub Pro/Team for a private one. The Action only reads the PR and its approvals with the workflow's token; it needs no license key and makes no other network calls. `v0` tracks the latest 0.x release; pin `v0.3.1` for a fixed version.
+It sets the `lake/plan-approval` status: success once every plan in `.lake/plans/` that the PR touches is approved, for its current version, by someone other than the PR author (`/lake approve <id>@<version>` or GitHub's Approve). Make that status (not the workflow job) required in branch protection to block merges; that needs a public repo, or GitHub Pro/Team for a private one. The Action only reads the PR and its approvals with the workflow's token; it needs no license key and makes no other network calls. `v0` tracks the latest 0.x release; pin `v0.3.2` for a fixed version.
 
 ## Pricing
 
@@ -94,9 +94,9 @@ Claim either in [this discussion](https://github.com/getlake/getlake.github.io/d
 - With a key: `npx lake-gate license activate <key>`, or set `LAKE_LICENSE_KEY` in CI. The key is checked offline. Lake makes no network call for licensing.
 - When the trial or key ends, new work pauses with a note on how to get a key. Existing plans, approvals, the review app and the PR check keep working, the local gate stops blocking (it never locks your repo), and `uninstall` always works.
 
-## lake-meter
+## Meter
 
-lake-meter is now Lake's cost layer: the per-step model picks, cost estimates and run cap are built into Lake. The `lake-meter` package keeps working on its own for existing users.
+Meter is Lake's cost-control capability: the per-step model picks, cost estimates and run cap are built into Lake. A standalone package remains available for existing Meter-only installs; new installs should use Lake.
 
 ## Support
 
