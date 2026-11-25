@@ -2,13 +2,8 @@ Lake License
 
 Copyright (c) 2026 Lake. All rights reserved.
 
-This software is proprietary. You may install and use it only during a Lake trial or under a valid Lake license
-key, and only as described at https://getlake.dev/#pricing. You may not copy, modify, redistribute, sublicense,
-sell or host it for others, or remove or bypass its license checks, without Lake's written permission.
+This software is proprietary. You may install and use it on the Lake Free tier (unlimited Meter cost control; Gate plan approval up to 3 users and 20 plan reviews per calendar month per repo), during a 14-day Lake Team trial, or under a valid Lake license key, and only as described at https://getlake.dev/platform/ and https://getlake.dev/pricing/ (full text: https://github.com/getlake/lake/blob/main/LICENSE). You may not copy, modify, redistribute, sublicense, sell or host it for others, or remove or bypass its license checks, without Lake's written permission.
 
-The software is provided "as is", without warranty of any kind. Lake is not liable for any damages arising from
-its use.
+The software is provided "as is", without warranty of any kind. Lake is not liable for any damages arising from its use.
 
-Earlier releases: lake-gate versions up to and including 0.2.5 and lake-meter versions up to and including 0.1.4
-were published under the MIT License, and those published copies remain under the MIT License. This license
-applies to lake-gate 0.3.0 and later and lake-meter 0.1.5 and later.
+Earlier releases: lake-gate versions up to and including 0.2.5 and lake-meter versions up to and including 0.1.4 were published under the MIT License, and those published copies remain under the MIT License. This license applies to lake-gate 0.3.0 and later and lake-meter 0.1.5 and later.

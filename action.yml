@@ -13,6 +13,9 @@ inputs:
     description: Post and update one summary comment on the PR.
     required: false
     default: 'true'
+  license_key:
+    description: Optional Team license key (LAKE_LICENSE_KEY) to lift Free-tier limits (3 users, 20 plan reviews/month).
+    required: false
 outputs:
   state:
     description: success or failure
