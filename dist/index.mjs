@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Lake GitHub Action 0.3.1 (lake/plan-approval). Built from lake-gate 0.3.1. Copyright (c) 2026 Lake. All rights reserved. See LICENSE.
+// Lake GitHub Action 0.4.0 (lake/plan-approval). Built from lake-gate 0.4.0. Copyright (c) 2026 Lake. All rights reserved. See LICENSE.
 
 // src/action.js
-import fs from "node:fs";
+import fs2 from "node:fs";
 
 // src/config-core.js
 var DEFAULT_CONFIG = {
@@ -1127,6 +1127,14 @@ ${ev.body || ""}`, via: "GitHub review", native: true };
   return out;
 }
 
+// src/constants.js
+var TRIAL_DAYS = 14;
+var FREE_MAX_USERS = 3;
+var FREE_MAX_REVIEWS_PER_MONTH = 20;
+var KINDS = { founding: "Founding member", partner: "Design partner", paid: "Subscription" };
+var PRICING_URL = "https://getlake.dev/pricing/";
+var KEY_URL = "https://github.com/getlake/getlake.github.io/discussions/1";
+
 // src/github.js
 var STATUS_CONTEXT = "lake/plan-approval";
 var MARKER = "<!-- lake-gate:summary -->";
@@ -1244,12 +1252,12 @@ async function collectEvents(gh, number) {
   ];
 }
 var NATIVE_STATES = /* @__PURE__ */ new Set(["APPROVED", "CHANGES_REQUESTED"]);
-async function nativeDigests(gh, events, path, { headSha, headText, config }) {
+async function nativeDigests(gh, events, path2, { headSha, headText, config }) {
   const out = {};
   if (config.nativeReviews === false) return out;
   for (const ev of events) {
     if (ev.source !== "review" || !NATIVE_STATES.has(ev.state) || !ev.commitId || ev.commitId in out || parseCommands(ev.body).length) continue;
-    const t = ev.commitId === headSha && headText != null ? headText : await gh.file(path, ev.commitId);
+    const t = ev.commitId === headSha && headText != null ? headText : await gh.file(path2, ev.commitId);
     out[ev.commitId] = t == null ? null : readPlanText(t).digest;
   }
   return out;
@@ -1294,11 +1302,11 @@ async function loadBaseConfig(gh, pr) {
   }
   return c;
 }
-async function gatedBefore(gh, path, pr, prCommits, config, headDigest) {
+async function gatedBefore(gh, path2, pr, prCommits, config, headDigest) {
   if ((config.autoApprove?.mode || "off") === "off") return false;
-  const touching = (await gh.req("GET", `/commits?sha=${encodeURIComponent(pr.head.sha)}&path=${encodeURIComponent(path)}&per_page=20`) || []).map((c) => c.sha).filter((s) => prCommits.has(s) && s !== pr.head.sha).slice(0, 10);
+  const touching = (await gh.req("GET", `/commits?sha=${encodeURIComponent(pr.head.sha)}&path=${encodeURIComponent(path2)}&per_page=20`) || []).map((c) => c.sha).filter((s) => prCommits.has(s) && s !== pr.head.sha).slice(0, 10);
   for (const sha of touching) {
-    const t = await gh.file(path, sha);
+    const t = await gh.file(path2, sha);
     if (t == null) continue;
     const p = readPlanText(t);
     if (p.digest === headDigest) continue;
@@ -1329,7 +1337,7 @@ async function evaluatePr(gh, number) {
   }
   const sum = config.policyBroken ? { state: "failure", description: `Policy file unreadable: fix .lake/config.json on ${pr.base.ref} ${(config.configError.match(/\(line \d+, column \d+\)/) || [""])[0]}`.trim() } : summarize(results, codeChanged, config);
   if (config.policyFrom) sum.description = `.lake/config.json broken, last valid policy kept \xB7 ${sum.description}`;
-  return { pr, config, results, codeChanged, repo: gh.repo, ...sum };
+  return { pr, config, results, events, codeChanged, repo: gh.repo, ...sum };
 }
 function summarize(results, codeChanged, config) {
   if (!results.length) {
@@ -1342,9 +1350,102 @@ function summarize(results, codeChanged, config) {
   if (r.state === "needs-budget") return { state: "failure", description: `Needs budget approval for ${r.id} (up to ${money(r.budget.exposure)} > ${money(r.budget.threshold)})`.slice(0, 140) };
   return { state: "failure", description: r.state === "changes-requested" ? `Changes requested on ${r.id}` : `Waiting for approval: /lake approve ${r.id}@${r.short}`.slice(0, 140) };
 }
+var isBotUser = (u) => !u || u.type === "Bot" || /\[bot\]$/i.test(u.login || "");
+async function boundedList(gh, url, { maxPages = 3, stopWhen } = {}) {
+  const out = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const chunk = await gh.req("GET", `${url}${url.includes("?") ? "&" : "?"}per_page=100&page=${page}`).catch(() => null);
+    if (!chunk || !chunk.length) break;
+    out.push(...chunk);
+    if (chunk.length < 100 || stopWhen && stopWhen(chunk)) break;
+  }
+  return out;
+}
+async function collectMonthUsage(gh, pr, results, events = [], config = {}, now = Date.now()) {
+  const month = new Date(now).toISOString().slice(0, 7);
+  const monthStart = `${month}-01T00:00:00Z`;
+  const [issueComments, pulls] = await Promise.all([
+    boundedList(gh, `/issues/comments?since=${encodeURIComponent(monthStart)}&sort=created&direction=asc`, { maxPages: 3 }),
+    boundedList(gh, "/pulls?state=all&sort=updated&direction=desc", {
+      maxPages: 3,
+      stopWhen: (chunk) => chunk.every((p) => p.updated_at && p.updated_at < monthStart)
+    })
+  ]);
+  const prMap = /* @__PURE__ */ new Map();
+  for (const c of issueComments) {
+    if (c.user?.type !== "Bot" || !String(c.body || "").startsWith(MARKER)) continue;
+    const createdAt = String(c.created_at || "");
+    if (createdAt.slice(0, 7) !== month) continue;
+    const m = String(c.issue_url || "").match(/\/(\d+)$/);
+    if (!m) continue;
+    const prNum = Number(m[1]);
+    const plansCount = Math.max(1, String(c.body).split("\n").filter((l) => /^\| \[.+\]\(\.lake\/plans\//.test(l)).length);
+    const prev = prMap.get(prNum);
+    if (!prev || createdAt < prev.createdAt) prMap.set(prNum, { prNum, createdAt, plansCount });
+    else if (plansCount > prev.plansCount) prev.plansCount = plansCount;
+  }
+  const sorted = [...prMap.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.prNum - b.prNum);
+  let reviewsForPr = 0;
+  let totalReviews = 0;
+  let seenCurrent = false;
+  for (const entry of sorted) {
+    const count = entry.prNum === pr.number ? Math.max(entry.plansCount, results.length) : entry.plansCount;
+    totalReviews += count;
+    if (!seenCurrent) reviewsForPr += count;
+    if (entry.prNum === pr.number) seenCurrent = true;
+  }
+  if (!seenCurrent) {
+    totalReviews += results.length;
+    reviewsForPr = totalReviews;
+  }
+  const users = /* @__PURE__ */ new Set();
+  const addUser = (login) => {
+    const clean2 = String(login || "").replace(/^@/, "").trim();
+    if (clean2 && !/\[bot\]$/i.test(clean2)) users.add(clean2.toLowerCase());
+  };
+  if (pr?.user && !isBotUser(pr.user)) addUser(pr.user.login);
+  for (const p of pulls) {
+    if ((prMap.has(p.number) || p.number === pr.number) && p.user && !isBotUser(p.user)) addUser(p.user.login);
+  }
+  for (const c of issueComments) {
+    if (String(c.created_at || "").slice(0, 7) !== month) continue;
+    if (c.user && !isBotUser(c.user) && /(?:^|\n)\s*\/lake\b/.test(String(c.body || ""))) addUser(c.user.login);
+  }
+  for (const e of events) {
+    if (e.type !== "Bot" && e.login && !/\[bot\]$/i.test(e.login)) addUser(e.login);
+  }
+  for (const a of config?.budget?.approvers || []) {
+    if (a && !String(a).includes("/")) addUser(a);
+  }
+  const overReviews = reviewsForPr > FREE_MAX_REVIEWS_PER_MONTH;
+  const overUsers = users.size > FREE_MAX_USERS;
+  return {
+    month,
+    reviews: reviewsForPr,
+    monthTotalReviews: totalReviews,
+    maxReviews: FREE_MAX_REVIEWS_PER_MONTH,
+    users: users.size,
+    userLogins: [...users],
+    maxUsers: FREE_MAX_USERS,
+    overReviews,
+    overUsers,
+    overLimit: overReviews || overUsers
+  };
+}
 function renderSummary(ev) {
   const lines = [MARKER, "### Lake plan gate", ""];
   if (ev.config?.configError) lines.push(`> **${ev.config.policyBroken ? "Error" : "Warning"}:** ${configWarning(ev.config)}`, "");
+  if (ev.freeLimitExceeded) {
+    const u = ev.freeLimitExceeded;
+    const why = [u.overReviews ? `**${u.reviews}/${u.maxReviews} plan reviews** in ${u.month}` : "", u.overUsers ? `**${u.users}/${u.maxUsers} active users**` : ""].filter(Boolean).join(" and ");
+    lines.push(
+      `> **Lake Free tier limit reached** (${why}) \u2014 plan approval is paused above the Free limit so this PR is not locked.`,
+      `> **Meter** (cost estimates and run caps) remains **free forever with no limit**.`,
+      `> *How this is counted:* counted per UTC calendar month (${u.month}) from \`.lake/plans/\` PRs and active reviewers in this repo via GitHub \u2014 no Lake server or telemetry.`,
+      `> **Upgrade to Team ($15/user/month)** for unlimited users and plan reviews: ${PRICING_URL} \xB7 Request a key: ${KEY_URL} and add it as the \`LAKE_LICENSE_KEY\` repository secret.`,
+      ""
+    );
+  }
   if (!ev.results.length) {
     lines.push(ev.description + ".");
     return lines.join("\n");
@@ -1397,6 +1498,10 @@ function renderSummary(ev) {
   if (shadow.length) lines.push("", `Shadow auto-approve: ${shadow.map((r) => r.id).join(", ")} would pass the auto-approve policy. It is in shadow mode, so a human still decides.`);
   const notes = ev.results.flatMap((r) => r.notes.filter((n) => !/refers to version/.test(n)));
   if (notes.length) lines.push("", "<details><summary>Ignored commands</summary>", "", ...notes.map((n) => `- ${n}`), "", "</details>");
+  if (ev.freeUsage && !ev.freeLimitExceeded) {
+    const u = ev.freeUsage;
+    lines.push("", `<sub>Lake Free (${u.month}): ${u.reviews}/${u.maxReviews} plan reviews this month, ${u.users}/${u.maxUsers} users \xB7 Meter stays free forever.</sub>`);
+  }
   return lines.join("\n");
 }
 async function publish(gh, ev, { comment = true } = {}) {
@@ -1412,6 +1517,119 @@ async function publish(gh, ev, { comment = true } = {}) {
   } catch (e) {
     console.log(`::warning::lake-gate couldn't post the summary comment (${String(e.message).slice(0, 120)}). Give the workflow "pull-requests: write" (see templates/lake-gate.yml).`);
   }
+}
+
+// src/license.js
+import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+var PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAfKGaw8wlQYB8gDAdMmUliqMuYLjLA/mLZmHqGpl9snY=
+-----END PUBLIC KEY-----
+`;
+var DAY = 864e5;
+var lakeHome = (env = process.env) => env.LAKE_HOME || path.join(os.homedir(), ".lake");
+var isDate = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s + "T00:00:00Z"));
+var endOfDay = (d) => Date.parse(d + "T00:00:00Z") + DAY;
+var ymd = (ms) => new Date(ms).toISOString().slice(0, 10);
+function verifyKey(key, { now = Date.now(), publicKey = PUBLIC_KEY_PEM } = {}) {
+  const s = String(key || "").trim();
+  const m = /^LAKE1\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(s);
+  if (!m) return { ok: false, reason: "malformed", message: "this is not a Lake license key (it should start with LAKE1.)" };
+  const body = Buffer.from(m[1], "base64url");
+  const sig = Buffer.from(m[2], "base64url");
+  let good = false;
+  try {
+    good = sig.length === 64 && crypto.verify(null, body, publicKey, sig);
+  } catch {
+    good = false;
+  }
+  if (!good) return { ok: false, reason: "bad-signature", message: "the key failed its signature check (it was changed, or was not issued by Lake)" };
+  let p;
+  try {
+    p = JSON.parse(body.toString("utf8"));
+  } catch {
+    return { ok: false, reason: "malformed", message: "the key payload is unreadable" };
+  }
+  if (!p || p.v !== 1 || !KINDS[p.kind] || !isDate(p.iat) || !isDate(p.exp)) return { ok: false, reason: "malformed", message: "the key payload is not a version Lake understands; update Lake (npx lake-gate@latest)", payload: p };
+  if (now < Date.parse(p.iat + "T00:00:00Z") - DAY) return { ok: false, reason: "not-yet-valid", message: `the key starts on ${p.iat}`, payload: p };
+  if (now >= endOfDay(p.exp)) return { ok: false, reason: "expired", message: `the ${KINDS[p.kind].toLowerCase()} key expired on ${p.exp}`, payload: p };
+  return { ok: true, payload: p, daysLeft: Math.ceil((endOfDay(p.exp) - now) / DAY) };
+}
+function readJson(p) {
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch {
+    return null;
+  }
+}
+function writeJson(p, v) {
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify(v, null, 2) + "\n");
+}
+var keyPath = (env = process.env) => path.join(lakeHome(env), "license.key");
+var trialPath = (env) => path.join(lakeHome(env), "trial.json");
+function storedKey(env = process.env, { ci = false } = {}) {
+  if (env.INPUT_LICENSE_KEY && env.INPUT_LICENSE_KEY.trim()) return { key: env.INPUT_LICENSE_KEY.trim(), source: "INPUT_LICENSE_KEY" };
+  if (env.LAKE_LICENSE_KEY && env.LAKE_LICENSE_KEY.trim()) return { key: env.LAKE_LICENSE_KEY.trim(), source: "LAKE_LICENSE_KEY" };
+  if (ci) return null;
+  try {
+    const k = fs.readFileSync(keyPath(env), "utf8").trim();
+    if (k) return { key: k, source: keyPath(env) };
+  } catch {
+  }
+  return null;
+}
+function licenseStatus({ now = Date.now(), env = process.env, start = false, ci = false } = {}) {
+  let trial = null;
+  let t = now;
+  if (!ci) {
+    const tp = trialPath(env);
+    trial = readJson(tp);
+    if (trial && !Number.isFinite(Date.parse(trial.started))) trial = null;
+    const seen = trial && Number.isFinite(Date.parse(trial.lastSeen)) ? Date.parse(trial.lastSeen) : 0;
+    t = Math.max(now, seen);
+    if (start && !trial) {
+      trial = { started: new Date(t).toISOString(), lastSeen: new Date(t).toISOString() };
+      try {
+        writeJson(tp, trial);
+      } catch {
+      }
+    } else if (start && trial && t > seen + 36e5) {
+      try {
+        writeJson(tp, { ...trial, lastSeen: new Date(t).toISOString() });
+      } catch {
+      }
+    }
+  }
+  const sk = storedKey(env, { ci });
+  let keyError = null;
+  let expiredKey = null;
+  if (sk) {
+    const v = verifyKey(sk.key, { now: t });
+    if (v.ok) return { state: "licensed", tier: "team", kind: v.payload.kind, label: KINDS[v.payload.kind], sub: v.payload.sub, id: v.payload.id, expires: v.payload.exp, daysLeft: v.daysLeft, source: sk.source };
+    if (v.reason === "expired") expiredKey = v.payload;
+    else keyError = v.message;
+  }
+  if (ci) {
+    return {
+      state: "free",
+      tier: "free",
+      kind: expiredKey ? expiredKey.kind : "free",
+      label: expiredKey ? KINDS[expiredKey.kind] : "Free",
+      expires: expiredKey ? expiredKey.exp : null,
+      daysLeft: 0,
+      ...expiredKey ? { keyExpired: true } : {},
+      ...keyError ? { keyError } : {}
+    };
+  }
+  const started = trial ? Date.parse(trial.started) : t;
+  const trialEnd = started + TRIAL_DAYS * DAY;
+  const base = { trialStarted: trial ? ymd(started) : null, ...keyError ? { keyError } : {} };
+  if (t < trialEnd) return { state: "trial", tier: "team", expires: ymd(trialEnd - 1), daysLeft: Math.ceil((trialEnd - t) / DAY), ...base };
+  if (expiredKey) return { state: "free", tier: "free", kind: expiredKey.kind, label: KINDS[expiredKey.kind], expires: expiredKey.exp, trialEnded: ymd(trialEnd - 1), keyExpired: true, daysLeft: 0, ...base };
+  return { state: "free", tier: "free", kind: "trial", label: "Team trial", expires: ymd(trialEnd - 1), trialEnded: ymd(trialEnd - 1), daysLeft: 0, ...base };
 }
 
 // src/action.js
@@ -1458,8 +1676,26 @@ async function relayCheckAction(gh, payload, ev) {
   await gh.req("POST", `/issues/${ev.pr.number}/comments`, { body });
   return { relayed: true, login, action, plan: plan.id };
 }
+async function applyFreeTierLimit(gh, ev, env = process.env, now = Date.now()) {
+  const lic = licenseStatus({ env, ci: true, now });
+  if (lic.state === "licensed" || !ev.results.length) return ev;
+  const usage = await collectMonthUsage(gh, ev.pr, ev.results, ev.events || [], ev.config, now);
+  ev.freeUsage = usage;
+  if (usage.overLimit) {
+    ev.freeLimitExceeded = usage;
+    ev.originalState = ev.state;
+    ev.state = "success";
+    const why = [
+      usage.overReviews ? `${usage.reviews}/${usage.maxReviews} reviews in ${usage.month}` : "",
+      usage.overUsers ? `${usage.users}/${usage.maxUsers} users` : ""
+    ].filter(Boolean).join(", ");
+    ev.description = `Free limit reached (${why}). Plan review paused \u2014 upgrade: ${PRICING_URL}`.slice(0, 140);
+    console.log(`::warning::lake-gate: ${ev.description} (Request key: ${KEY_URL}; set LAKE_LICENSE_KEY secret.)`);
+  }
+  return ev;
+}
 async function runAction(env = process.env, fetchImpl) {
-  const payload = JSON.parse(fs.readFileSync(env.GITHUB_EVENT_PATH, "utf8"));
+  const payload = JSON.parse(fs2.readFileSync(env.GITHUB_EVENT_PATH, "utf8"));
   const number = prNumberFromEvent(env.GITHUB_EVENT_NAME, payload);
   const token = env.INPUT_TOKEN || env.GITHUB_TOKEN;
   const gh = client({ token, repo: env.GITHUB_REPOSITORY, api: env.GITHUB_API_URL || "https://api.github.com", fetchImpl });
@@ -1469,7 +1705,8 @@ async function runAction(env = process.env, fetchImpl) {
     console.log(`lake-gate: policy push to ${branch}: re-checking ${prs.length} open PR(s).`);
     for (const pr of prs) {
       try {
-        await publish(gh, await evaluatePr(gh, pr.number), { comment: (env.INPUT_COMMENT || "true") !== "false" });
+        const pev = await applyFreeTierLimit(gh, await evaluatePr(gh, pr.number), env);
+        await publish(gh, pev, { comment: (env.INPUT_COMMENT || "true") !== "false" });
       } catch (e) {
         console.log(`::warning::lake-gate: PR #${pr.number}: ${e.message}`);
       }
@@ -1486,11 +1723,12 @@ async function runAction(env = process.env, fetchImpl) {
     console.log(`lake-gate: check button: ${r.relayed ? `${r.action} ${r.plan} by @${r.login}` : `ignored (${r.reason})`}`);
     if (r.relayed) ev = await evaluatePr(gh, number);
   }
+  ev = await applyFreeTierLimit(gh, ev, env);
   await publish(gh, ev, { comment: (env.INPUT_COMMENT || "true") !== "false" });
-  if (ev.config.checkButtons && ev.results.length) await publishCheck(gh, ev).catch((e) => console.log(`lake-gate: could not create check run buttons: ${e.message}`));
+  if (ev.config.checkButtons && ev.results.length && !ev.freeLimitExceeded) await publishCheck(gh, ev).catch((e) => console.log(`lake-gate: could not create check run buttons: ${e.message}`));
   const md = renderSummary(ev);
-  if (env.GITHUB_STEP_SUMMARY) fs.appendFileSync(env.GITHUB_STEP_SUMMARY, md + "\n");
-  if (env.GITHUB_OUTPUT) fs.appendFileSync(env.GITHUB_OUTPUT, `state=${ev.state}
+  if (env.GITHUB_STEP_SUMMARY) fs2.appendFileSync(env.GITHUB_STEP_SUMMARY, md + "\n");
+  if (env.GITHUB_OUTPUT) fs2.appendFileSync(env.GITHUB_OUTPUT, `state=${ev.state}
 `);
   console.log(`lake-gate: ${ev.state}: ${ev.description}`);
   return ev;
@@ -1503,6 +1741,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 }
 export {
   CHECK_NAME,
+  applyFreeTierLimit,
   checkActions,
   prNumberFromEvent,
   publishCheck,
